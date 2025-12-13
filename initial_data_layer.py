@@ -1,6 +1,8 @@
 # initial_data_layer.py
 import pandas as pd
 
+from helpers.data_clean_helpers import *
+
 def load_raw_data():
     wh21 = pd.read_csv("./data/world-happiness-report-2021.csv")
     wh22 = pd.read_csv("./data/world-happiness-report-2022.csv")
@@ -9,9 +11,11 @@ def load_raw_data():
     eu = pd.read_csv("./data/Eu_member.csv")
     return wh21, wh22, wh23, w_pop, eu
 
-
 def process_data():
     wh21, wh22, wh23, w_pop, eu = load_raw_data()
+
+    wh21 = clean_wh21_data(wh21)
+    wh22 = clean_wh22_data(wh22)
 
     print(wh21.head())
     print(wh22.head())
