@@ -1,7 +1,9 @@
 # initial_data_layer.py
 import pandas as pd
+import pickle
 
 from helpers.data_clean_helpers import *
+from helpers.pickle_helpers import *
 
 def load_raw_data():
     wh21 = pd.read_csv("./data/world-happiness-report-2021.csv")
@@ -16,30 +18,39 @@ def process_data():
 
     wh21 = clean_wh21_data(wh21)
     wh22 = clean_wh22_data(wh22)
+    wh23 = clean_wh23_data(wh23)
+    print(w_pop.head(10))
+    w_pop = w_pop[["Country", "Population"]].rename(columns={"Country": "country", "Population": "population"})
+    eu = eu[["Country", "Population[2]", "Area (km2)"]].rename(columns={"Country": "country", "Population[2]": "population_(EU_only)", "Area (km2)": "area/km2_(EU_only)"})
 
-    print(wh21.head())
-    print(wh22.head())
-    print(wh23.head())
-    print(w_pop.head())
-    print(eu.head())
+    wh21["country"] = wh21["country"].str.replace("Palestinian Territories", "State of Palestine", regex=False).str.strip()
+    wh22["country"] = wh22["country"].str.replace("Palestinian Territories", "State of Palestine", regex=False).str.strip()
+    wh22["country"] = wh22["country"].str.replace("*", "", regex=False).str.strip()
+    wh22["country"] = wh22["country"].str.replace("Czechia", "Czech Republic", regex=False).str.strip()
+    wh23["country"] = wh23["country"].str.replace("Turkiye", "Turkey", regex=False).str.strip()
+    wh23["country"] = wh23["country"].str.replace("Czechia", "Czech Republic", regex=False).str.strip()
 
-    # 👉 Do all your expensive work here:
-    # joins, groupbys, feature engineering, etc.
-    # Example:
-    # combined = (
-    #     pd.concat([df1, df2, df3, df4, df5], ignore_index=True)
-    #     .dropna()
-    # )
+    check_common_countries(wh21, wh22, wh23)
 
-    # Maybe you precompute some aggregates that many charts need:
-    # totals_by_day = combined.groupby("date")["value"].sum().reset_index()
-    # totals_by_category = combined.groupby("category")["value"].sum().reset_index()
+    wh = (
+        wh21
+        .merge(wh22, on="country", how="inner")
+        .merge(wh23, on="country", how="inner")
+    )
 
-    # Return whatever you need for charts later
-    # return {
-    #     "combined": combined,
-    #     "totals_by_day": totals_by_day,
-    #     "totals_by_category": totals_by_category,
-    # }
+    print(wh.head(10))
+    print(w_pop)
+
+    # check_population_country_matches(wh, w_pop)
+
+    wh = (
+        wh.merge(w_pop, on="country", how="left")
+        .merge(eu, on="country", how="left")
+    )
+    print(wh.head(10))
+
+    write_pickle(wh21, "wh")
+
+
 
 process_data()

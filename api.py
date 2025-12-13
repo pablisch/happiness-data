@@ -1,4 +1,5 @@
 # api.py
+
 import matplotlib
 matplotlib.use("Agg")  # use non-GUI backend (important on macOS!)
 
@@ -7,7 +8,11 @@ from fastapi.responses import FileResponse
 import matplotlib.pyplot as plt
 import random
 
+from helpers.pickle_helpers import *
+
 app = FastAPI()
+wh = load_pickle("wh")
+print(wh)
 
 @app.get("/data")
 def get_data():
