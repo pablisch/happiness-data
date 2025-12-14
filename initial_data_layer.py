@@ -17,6 +17,7 @@ def process_data():
     wh21, wh22, wh23, w_pop, eu = load_raw_data()
 
     wh21 = clean_wh21_data(wh21)
+    print(wh21.head())
     wh22 = clean_wh22_data(wh22)
     wh23 = clean_wh23_data(wh23)
     print(w_pop.head(10))

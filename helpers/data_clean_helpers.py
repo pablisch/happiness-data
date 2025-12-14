@@ -32,7 +32,7 @@ wh23_cols_to_keep = [
 
 def clean_wh21_data(df):
     suffix = "_21"
-    return df[wh21_cols_to_keep].rename(columns={
+    df = df[wh21_cols_to_keep].rename(columns={
         "Country name": "country",
         "Regional indicator": "region",
         "Ladder score": f"ladder_score{suffix}",
@@ -44,10 +44,15 @@ def clean_wh21_data(df):
         "Explained by: Perceptions of corruption": f"corruption{suffix}",
         "Dystopia + residual": f"dystopia_res{suffix}",
     })
+    dystopia_h = 2.43
+    df[f"dystopia{suffix}"] = dystopia_h
+    df[f"other{suffix}"] = df[f"dystopia_res{suffix}"] - dystopia_h
+    df = df.drop(columns=[f"dystopia_res{suffix}"])
+    return df
 
 def clean_wh22_data(df):
     suffix = "_22"
-    return df[wh22_cols_to_keep].rename(columns={
+    df = df[wh22_cols_to_keep].rename(columns={
         "Country": "country",
         "Happiness score": f"ladder_score{suffix}",
         "Explained by: GDP per capita": f"GDP{suffix}",
@@ -57,12 +62,17 @@ def clean_wh22_data(df):
         "Explained by: Generosity": f"generosity{suffix}",
         "Explained by: Perceptions of corruption": f"corruption{suffix}",
         "Dystopia (1.83) + residual": f"dystopia_res{suffix}",
-        "Dystopia + residual": f"dystopia_res{suffix}",
+        # "Dystopia + residual": f"dystopia_res{suffix}",
     })
+    dystopia_h = 1.83
+    df[f"dystopia{suffix}"] = dystopia_h
+    df[f"other{suffix}"] = df[f"dystopia_res{suffix}"] - dystopia_h
+    df = df.drop(columns=[f"dystopia_res{suffix}"])
+    return df
 
 def clean_wh23_data(df):
     suffix = "_23"
-    return df[wh23_cols_to_keep].rename(columns={
+    df = df[wh23_cols_to_keep].rename(columns={
         "Country name": "country",
         "Ladder score": f"ladder_score{suffix}",
         "Explained by: Log GDP per capita": f"GDP{suffix}",
@@ -73,6 +83,11 @@ def clean_wh23_data(df):
         "Explained by: Perceptions of corruption": f"corruption{suffix}",
         "Dystopia + residual": f"dystopia_res{suffix}",
     })
+    dystopia_h = 1.778
+    df[f"dystopia{suffix}"] = dystopia_h
+    df[f"other{suffix}"] = df[f"dystopia_res{suffix}"] - dystopia_h
+    df = df.drop(columns=[f"dystopia_res{suffix}"])
+    return df
 
 def check_common_countries(df21, df22, df23):
     c21 = set(df21["country"])
