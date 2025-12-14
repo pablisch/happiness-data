@@ -22,6 +22,12 @@ def get_data():
     wh = app.state.wh
     return wh.to_dict(orient="records")
 
+@app.get("/cols")
+def get_columns():
+    wh = app.state.wh
+    return {"columns": list(wh.columns)}
+
+
 @app.get("/chart")
 def get_chart():
     x = [1, 2, 3, 4, 5]

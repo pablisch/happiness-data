@@ -59,11 +59,11 @@ def process_data():
     wh.region = wh.region.astype("string")
 
     # print(wh.head(50))
-    # print(wh.dtypes)
+    print(wh.dtypes)
     #
     print(wh.region.unique())
 
-    write_pickle(wh21, "wh")
+    write_pickle(wh, "wh")
 
 
 
