@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import random
 
 from helpers.pickle_helpers import *
+from charts import *
 
 app = FastAPI()
 
@@ -35,3 +36,10 @@ def get_chart():
     plt.close()
 
     return FileResponse(filename, media_type="image/png")
+
+@app.get("/chart/{region}/{year}")
+def region_chart(region: str, year: int):
+    filename = f"chart_{region}_{year}.png"
+    plot_region_happiness_factors(app.state.wh, region, year, filename=filename)
+    return FileResponse(filename, media_type="image/png")
+
