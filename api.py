@@ -11,14 +11,15 @@ import random
 from helpers.pickle_helpers import *
 
 app = FastAPI()
-wh = load_pickle("wh")
-print(wh)
+
+@app.on_event("startup")
+def load_data():
+    app.state.wh = load_pickle("wh")
 
 @app.get("/data")
 def get_data():
-    return {
-        "numbers": [random.randint(1, 100) for _ in range(5)]
-    }
+    wh = app.state.wh
+    return wh.to_dict(orient="records")
 
 @app.get("/chart")
 def get_chart():

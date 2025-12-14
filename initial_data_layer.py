@@ -21,7 +21,7 @@ def process_data():
     wh23 = clean_wh23_data(wh23)
     print(w_pop.head(10))
     w_pop = w_pop[["Country", "Population"]].rename(columns={"Country": "country", "Population": "population"})
-    eu = eu[["Country", "Population[2]", "Area (km2)"]].rename(columns={"Country": "country", "Population[2]": "population_(EU_only)", "Area (km2)": "area/km2_(EU_only)"})
+    eu = eu[["Country", "Population[2]", "Area (km2)"]].rename(columns={"Country": "country", "Population[2]": "population_EU_only", "Area (km2)": "area_km2_EU_only"})
 
     wh21["country"] = wh21["country"].str.replace("Palestinian Territories", "State of Palestine", regex=False).str.strip()
     wh22["country"] = wh22["country"].str.replace("Palestinian Territories", "State of Palestine", regex=False).str.strip()
@@ -47,7 +47,14 @@ def process_data():
         wh.merge(w_pop, on="country", how="left")
         .merge(eu, on="country", how="left")
     )
+
+    wh["population_EU_only"] = numeric_object_to_int(wh, "population_EU_only")
+    wh["area_km2_EU_only"] = numeric_object_to_int(wh, "area_km2_EU_only")
+    wh.country = wh.country.astype("string")
+    wh.region = wh.country.astype("string")
+
     print(wh.head(10))
+    print(wh.dtypes)
 
     write_pickle(wh21, "wh")
 

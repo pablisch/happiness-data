@@ -1,5 +1,7 @@
 # data_clean_helpers.py
 
+import pandas as pd
+
 cols_to_keep = [
     "Explained by: Log GDP per capita",
     "Explained by: Social support",
@@ -130,3 +132,14 @@ def check_population_country_matches(wh_df, pop_df):
                 "in_pop": country in pop_countries,
             }
         )
+
+# convert numeric object type to int, e.g. 1,234,567 (object) -> 1234567 (int)
+def numeric_object_to_int(df, col):
+    df[col] = (
+        df[col]
+        .astype(str)  # convert objects to string
+        .str.replace(",", "", regex=False)  # remove thousands separators
+        .str.strip()  # remove whitespace
+    )
+    df[col] = pd.to_numeric(df[col], errors="coerce").round().astype("Int64")
+    return df[col]
