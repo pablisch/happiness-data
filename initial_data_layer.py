@@ -33,14 +33,18 @@ def process_data():
 
     check_common_countries(wh21, wh22, wh23)
 
+    print(f"wh21: {wh21.head(50)}")
+    print(f"wh22: {wh22.head()}")
+    print(f"wh23: {wh23.head()}")
+
     wh = (
         wh21
         .merge(wh22, on="country", how="inner")
         .merge(wh23, on="country", how="inner")
     )
 
-    print(wh.head(10))
-    print(w_pop)
+    print(f"wh: {wh.head()}")
+    # print(w_pop)
 
     # check_population_country_matches(wh, w_pop)
 
@@ -52,10 +56,12 @@ def process_data():
     wh["population_EU_only"] = numeric_object_to_int(wh, "population_EU_only")
     wh["area_km2_EU_only"] = numeric_object_to_int(wh, "area_km2_EU_only")
     wh.country = wh.country.astype("string")
-    wh.region = wh.country.astype("string")
+    wh.region = wh.region.astype("string")
 
-    print(wh.head(10))
-    print(wh.dtypes)
+    # print(wh.head(50))
+    # print(wh.dtypes)
+    #
+    print(wh.region.unique())
 
     write_pickle(wh21, "wh")
 
