@@ -3,9 +3,9 @@
 import matplotlib
 matplotlib.use("Agg")  # use non-GUI backend (important on macOS!)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
-import matplotlib.pyplot as plt
+from fastapi.responses import StreamingResponse
 import random
 
 from helpers.pickle_helpers import *
@@ -43,9 +43,23 @@ def get_chart():
 
     return FileResponse(filename, media_type="image/png")
 
-@app.get("/chart/{region}/{year}")
-def region_chart(region: str, year: int):
-    filename = f"chart_{region}_{year}.png"
-    plot_region_happiness_factors(app.state.wh, region, year, filename=filename)
-    return FileResponse(filename, media_type="image/png")
+# @app.get("/chart/{region}/{year}")
+# def region_chart(region: str, year: int):
+#     buf = plot_region_happiness_factors(app.state.wh, region, year)
+#     return StreamingResponse(buf, media_type="image/png")
+
+@app.get("/chart/{style}/{region}/{year}")
+def region_chart(style: str, region: str, year: int):
+    df = app.state.wh
+
+    if style == "original":
+        buf = plot_region_original(df, region, year)
+    elif style == "polished":
+        buf = plot_region_polished(df, region, year)
+    elif style == "seaborn":
+        buf = plot_region_seaborn(df, region, year)
+    else:
+        raise HTTPException(status_code=404, detail="Unknown chart style")
+
+    return StreamingResponse(buf, media_type="image/png")
 
