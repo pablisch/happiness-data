@@ -1,17 +1,35 @@
 # api.py
 
 import matplotlib
-matplotlib.use("Agg")  # use non-GUI backend (important on macOS!)
+matplotlib.use("Agg")  # MUST be before pyplot is imported anywhere
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
 from fastapi.responses import StreamingResponse
-import random
+from fastapi.middleware.cors import CORSMiddleware
 
-from helpers.pickle_helpers import *
-from charts import *
+import pandas as pd
+import numpy as np
+import math
+
+from helpers.pickle_helpers import load_pickle
+from contribution_bar_chart import plot_contribution_bar_chart
 
 app = FastAPI()
+
+# ---- CORS MIDDLEWARE (ADD THIS) ----
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# -----------------------------------
 
 @app.on_event("startup")
 def load_data():
@@ -19,47 +37,39 @@ def load_data():
 
 @app.get("/data")
 def get_data():
-    wh = app.state.wh
-    return wh.to_dict(orient="records")
+    df = app.state.wh.copy()
+
+    # 1) Replace +/-inf with NaN
+    df = df.replace([np.inf, -np.inf], np.nan)
+
+    # 2) Convert DataFrame to plain Python objects (best chance to normalise dtypes)
+    records = df.to_dict(orient="records")
+
+    # 3) Final pass: convert any remaining NaN to None (JSON null)
+    for row in records:
+        for k, v in row.items():
+            if isinstance(v, float) and math.isnan(v):
+                row[k] = None
+
+    return records
 
 @app.get("/cols")
 def get_columns():
-    wh = app.state.wh
-    return {"columns": list(wh.columns)}
+    return {"columns": list(app.state.wh.columns)}
 
+@app.get("/contrib_bar/{geo_area}/{year}")
+def contrib_bar(geo_area: str, year: int):
+    try:
+        buf = plot_contribution_bar_chart(
+            app.state.wh,
+            geo_area=geo_area,
+            year=year,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-@app.get("/chart")
-def get_chart():
-    x = [1, 2, 3, 4, 5]
-    y = [random.randint(1, 10) for _ in x]
-
-    filename = "chart.png"
-
-    plt.figure()
-    plt.plot(x, y)
-    plt.title("Random Chart")
-    plt.savefig(filename)
-    plt.close()
-
-    return FileResponse(filename, media_type="image/png")
-
-# @app.get("/chart/{region}/{year}")
-# def region_chart(region: str, year: int):
-#     buf = plot_region_happiness_factors(app.state.wh, region, year)
-#     return StreamingResponse(buf, media_type="image/png")
-
-@app.get("/chart/{style}/{region}/{year}")
-def region_chart(style: str, region: str, year: int):
-    df = app.state.wh
-
-    if style == "original":
-        buf = plot_region_original(df, region, year)
-    elif style == "polished":
-        buf = plot_region_polished(df, region, year)
-    elif style == "seaborn":
-        buf = plot_region_seaborn(df, region, year)
-    else:
-        raise HTTPException(status_code=404, detail="Unknown chart style")
-
-    return StreamingResponse(buf, media_type="image/png")
-
+    return StreamingResponse(
+        buf,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store"},
+    )
