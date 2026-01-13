@@ -3,20 +3,20 @@
 import matplotlib
 matplotlib.use("Agg")  # MUST be before pyplot is imported anywhere
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-import pandas as pd
 import numpy as np
 import math
+from urllib.parse import unquote  # ✅ NEW: decode geo_area safely
 
 from helpers.pickle_helpers import load_pickle
-from contribution_bar_chart import plot_contribution_bar_chart
+from contribution_bar_chart import plot_contribution_bar_chart, build_contribution_bar_title
 
 app = FastAPI()
 
-# ---- CORS MIDDLEWARE (ADD THIS) ----
+# ---- CORS MIDDLEWARE ----
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -29,7 +29,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# -----------------------------------
+# -------------------------
 
 @app.on_event("startup")
 def load_data():
@@ -42,10 +42,10 @@ def get_data():
     # 1) Replace +/-inf with NaN
     df = df.replace([np.inf, -np.inf], np.nan)
 
-    # 2) Convert DataFrame to plain Python objects (best chance to normalise dtypes)
+    # 2) Convert DataFrame to plain Python objects
     records = df.to_dict(orient="records")
 
-    # 3) Final pass: convert any remaining NaN to None (JSON null)
+    # 3) Convert any NaN to None (JSON null)
     for row in records:
         for k, v in row.items():
             if isinstance(v, float) and math.isnan(v):
@@ -58,12 +58,20 @@ def get_columns():
     return {"columns": list(app.state.wh.columns)}
 
 @app.get("/contrib_bar/{geo_area}/{year}")
-def contrib_bar(geo_area: str, year: int):
+def contrib_bar(
+    geo_area: str,
+    year: int,
+    show_eu: bool = Query(False),
+):
+    # ✅ NEW: make sure geo_area is decoded (e.g. "Czech%20Republic" -> "Czech Republic")
+    geo_area = unquote(geo_area)
+
     try:
         buf = plot_contribution_bar_chart(
             app.state.wh,
             geo_area=geo_area,
             year=year,
+            show_eu=show_eu,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -73,3 +81,16 @@ def contrib_bar(geo_area: str, year: int):
         media_type="image/png",
         headers={"Cache-Control": "no-store"},
     )
+
+@app.get("/contrib_bar_meta/{geo_area}/{year}")
+def contrib_bar_meta(
+    geo_area: str,
+    year: int,
+    show_eu: bool = Query(False),
+):
+    return {
+        "title": build_contribution_bar_title(geo_area, year, show_eu),
+        "geo_area": geo_area,
+        "year": year,
+        "show_eu": show_eu,
+    }

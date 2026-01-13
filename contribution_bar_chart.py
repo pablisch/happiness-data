@@ -3,6 +3,7 @@
 from io import BytesIO
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 
 BASE_WIDTH = 12
 BASE_HEIGHT = 8
@@ -17,14 +18,23 @@ AXIS_LABEL_SIZE = 13 * FONT_SCALE
 Y_TICK_SIZE = 13 * FONT_SCALE
 X_TICK_SIZE = 13 * FONT_SCALE
 
-TITLE_BOTTOM_PADDING = 23 * FONT_SCALE
 X_LABEL_PADDING = 14 * FONT_SCALE
 # -----------------------------
 
 
 def _compute_region_factors(df: pd.DataFrame, geo_area: str, year: int | str):
+    """
+    Returns:
+      labels: list[str]
+      country_values: np.ndarray
+      eu_values: np.ndarray
+      year_str: str  (two-digit, e.g. "21")
+    """
+    # Normalise inputs
+    geo_area = str(geo_area).strip()
+
     year_str = str(year)
-    if len(year_str) == 4:  # 2021 -> "21"
+    if len(year_str) == 4:
         year_str = year_str[-2:]
     suffix = f"_{year_str}"
 
@@ -43,31 +53,28 @@ def _compute_region_factors(df: pd.DataFrame, geo_area: str, year: int | str):
     if missing:
         raise ValueError(f"Missing expected columns for year 20{year_str}: {missing}")
 
-    # -------------------------
-    # SELECT THE SCOPE (EU or country)
-    # -------------------------
-    if geo_area == "EU":
-        if "population_EU_only" not in df.columns:
-            raise ValueError("EU selection requires 'population_EU_only' column")
+    # EU series (always computed so it can be optionally displayed)
+    if "population_EU_only" not in df.columns:
+        raise ValueError("EU overlay requires 'population_EU_only' column")
 
-        area_df = df[df["population_EU_only"].notna()]
-        if area_df.empty:
-            raise ValueError("No EU rows found (population_EU_only is empty)")
+    eu_df = df[df["population_EU_only"].notna()]
+    if eu_df.empty:
+        raise ValueError("No EU rows found (population_EU_only is empty)")
 
-        # Average across EU member states
-        series = area_df[factor_cols].mean()
+    eu_series = eu_df[factor_cols].mean()
 
-    else:
-        # Treat geo_area as a country name
-        if "country" not in df.columns:
-            raise ValueError("Country selection requires 'country' column")
+    # Country series
+    if "country" not in df.columns:
+        raise ValueError("Country selection requires 'country' column")
 
-        area_df = df[df["country"] == geo_area]
-        if area_df.empty:
-            raise ValueError(f"No rows found for country '{geo_area}'")
+    # Be tolerant of whitespace differences
+    country_mask = df["country"].astype(str).str.strip() == geo_area
+    country_df = df[country_mask]
 
-        # If there are multiple rows, average them; otherwise this is just the row values
-        series = area_df[factor_cols].mean()
+    if country_df.empty:
+        raise ValueError(f"No rows found for country '{geo_area}'")
+
+    country_series = country_df[factor_cols].mean()
 
     labels = [
         "GDP",
@@ -79,39 +86,60 @@ def _compute_region_factors(df: pd.DataFrame, geo_area: str, year: int | str):
         "Residual (other)",
     ]
 
-    values = series.values
-    return labels, values, year_str
+    return labels, country_series.values, eu_series.values, year_str
 
 
+def build_contribution_bar_title(geo_area: str, year: int | str, show_eu: bool = False) -> str:
+    year_str = str(year)
+    if len(year_str) == 4:
+        year_str = year_str[-2:]
+    year = f"20{year_str}"
 
-def plot_contribution_bar_chart(df: pd.DataFrame, geo_area: str, year: int | str) -> BytesIO:
-    labels, values, year_str = _compute_region_factors(df, geo_area, year)
+    title = f"Average factor contributions to happiness (ladder) score\nfor {geo_area} in {year}"
+    if show_eu:
+        title += " (alongside EU average)"
+    return title
+
+
+def plot_contribution_bar_chart(
+    df: pd.DataFrame,
+    geo_area: str,
+    year: int | str,
+    show_eu: bool = False,
+) -> BytesIO:
+    labels, country_values, eu_values, year_str = _compute_region_factors(df, geo_area, year)
 
     fig, ax = plt.subplots(figsize=(BASE_WIDTH, BASE_HEIGHT))
 
-    # Horizontal bar chart
-    ax.barh(labels, values)
+    if not show_eu:
+        # --- Current behaviour ---
+        ax.barh(labels, country_values)
 
-    # BELOW - replaced in favour of suptitle
-    # ax.set_title(
-    #     f"Average factor contributions to happiness (ladder) score "
-    #     f"for {geo_area} in 20{year_str}",
-    #     fontsize=TITLE_SIZE,
-    #     pad=TITLE_BOTTOM_PADDING,  # ← vertical spacing from plot
-    #     loc="center",
-    # )
+    else:
+        # --- Grouped bars: Country (top) + EU (beneath) ---
+        y = np.arange(len(labels))
 
-    fig.suptitle(
-        f"Average factor contributions to happiness (ladder) score "
-        f"for {geo_area} in 20{year_str}",
-        fontsize=TITLE_SIZE,
-        y=0.98,  # near top of figure
-    )
+        group_height = 0.8          # total vertical space per factor row
+        bar_h = group_height / 2.2  # thinner bars to fit two
+        gap = bar_h * 0.25          # small gap between them
+
+        # Country above, EU beneath
+        y_country = y - (bar_h / 2 + gap / 2)
+        y_eu = y + (bar_h / 2 + gap / 2)
+
+        ax.barh(y_country, country_values, height=bar_h, label=geo_area)
+        ax.barh(y_eu, eu_values, height=bar_h, label="EU average", color="#888888")
+
+        # Center tick labels between the paired bars
+        ax.set_yticks(y)
+        ax.set_yticklabels(labels)
+
+        ax.legend(loc="lower right", frameon=False)
 
     ax.set_xlabel(
         "Contribution to happiness score",
         fontsize=AXIS_LABEL_SIZE,
-        labelpad=X_LABEL_PADDING,  # ← add space between ticks and label
+        labelpad=X_LABEL_PADDING,
     )
 
     ax.set_ylabel(
@@ -144,13 +172,10 @@ def plot_contribution_bar_chart(df: pd.DataFrame, geo_area: str, year: int | str
     # Remove the outer figure box
     fig.patch.set_visible(False)
 
-    # fig.tight_layout() # replaced with below when replacing the title with a suptitle
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.95))
 
-
     buf = BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", transparent=True)
+    fig.savefig(buf, format="png", transparent=True)
     plt.close(fig)
     buf.seek(0)
-
     return buf
