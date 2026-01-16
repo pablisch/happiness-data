@@ -5,22 +5,16 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
-BASE_WIDTH = 12
-BASE_HEIGHT = 8
-
-# -----------------------------
-# Typography control
-# -----------------------------
-FONT_SCALE = 1.5  # change this to scale all chart text
-
-TITLE_SIZE = 16 * FONT_SCALE
-AXIS_LABEL_SIZE = 13 * FONT_SCALE
-Y_TICK_SIZE = 13 * FONT_SCALE
-X_TICK_SIZE = 13 * FONT_SCALE
-
-X_LABEL_PADDING = 14 * FONT_SCALE
-# -----------------------------
-
+from charts.chart_style import (
+    AXIS_LABEL_SIZE,
+    TICK_SIZE,
+    X_LABEL_PADDING,
+    BASE_WIDTH,
+    BASE_HEIGHT_BAR,
+    EU_BAR_XMIN, EU_BAR_XMAX, EU_BAR_XPAD_RATIO,
+    FIXED_BAR_XMIN, FIXED_BAR_XMAX, FIXED_BAR_XPAD_RATIO,
+    COUNTRY_COLOR, EU_COLOR,
+)
 
 def _compute_region_factors(df: pd.DataFrame, geo_area: str, year: int | str):
     """
@@ -105,55 +99,63 @@ def plot_contribution_bar_chart(
     geo_area: str,
     year: int | str,
     show_eu: bool = False,
+    fixed_scale: bool = False,
 ) -> BytesIO:
-    out = _compute_region_factors(df, geo_area, year)
+    labels, country_series, eu_series, year_str = _compute_region_factors(df, geo_area, year)
 
-    # Support both versions:
-    # - new: (labels, country_series, eu_series, year_str)
-    # - old: (labels, values, year_str)  [no eu_series]
-    if len(out) == 4:
-        labels, country_series, eu_series, year_str = out
-        country_vals = np.asarray(country_series, dtype=float)
-        eu_vals = np.asarray(eu_series, dtype=float)
-    elif len(out) == 3:
-        labels, country_vals, year_str = out
-        country_vals = np.asarray(country_vals, dtype=float)
-        eu_vals = None
-    else:
-        raise ValueError(f"_compute_region_factors returned unexpected length: {len(out)}")
+    # Normalise to arrays
+    country_vals = np.asarray(country_series, dtype=float)
+    eu_vals = np.asarray(eu_series, dtype=float)
 
-    fig, ax = plt.subplots(figsize=(BASE_WIDTH, BASE_HEIGHT))
+    fig, ax = plt.subplots(figsize=(BASE_WIDTH, BASE_HEIGHT_BAR))
+
+    # Helpers
+    finite_country = country_vals[np.isfinite(country_vals)]
+    country_has_negative = bool(finite_country.size and (finite_country.min() < 0))
 
     # ------------------------------------------------
-    # Stable X-axis range (so toggling EU doesn't rescale)
-    # Always compute limits using BOTH country + EU values
-    # (if EU values exist)
+    # X-axis range selection
+    #
+    # fixed_scale=True:
+    #   - XMAX fixed (EU-wide)
+    #   - XMIN = 0 unless current country needs negatives; then use FIXED_BAR_XMIN
+    #
+    # fixed_scale=False (bugfixed):
+    #   - show negatives if current country has them
+    #   - but do NOT allow XMIN to go below FIXED_BAR_XMIN (EU-country fixed minimum)
     # ------------------------------------------------
-    if eu_vals is not None:
-        limit_vals = np.concatenate([country_vals, eu_vals])
+    if fixed_scale:
+        xmax = FIXED_BAR_XMAX * (1.0 + FIXED_BAR_XPAD_RATIO)
+        xmin = FIXED_BAR_XMIN if country_has_negative else 0.0
+        ax.set_xlim(xmin, xmax)
+
+        if xmin < 0:
+            ax.axvline(0, linewidth=1, color="#666666", alpha=0.8)
+
     else:
-        limit_vals = country_vals
+        xmax = EU_BAR_XMAX * (1.0 + EU_BAR_XPAD_RATIO)
 
-    finite_vals = limit_vals[np.isfinite(limit_vals)]
+        if country_has_negative:
+            vmin = float(finite_country.min())
 
-    if finite_vals.size == 0:
-        ax.set_xlim(0.0, 1.0)
-    else:
-        xmax = float(finite_vals.max())
-        xmin = float(finite_vals.min())
+            # Padding can push below the intended "floor" (FIXED_BAR_XMIN), so clamp it.
+            pad = (xmax - vmin) * EU_BAR_XPAD_RATIO
+            xmin_raw = vmin - pad
+            xmin = max(FIXED_BAR_XMIN, xmin_raw)
+        else:
+            xmin = 0.0
 
-        # For contributions these should be >= 0, but keep safe:
-        xmin = min(0.0, xmin)
+        ax.set_xlim(xmin, xmax)
 
-        pad = (xmax - xmin) * 0.06 if xmax > xmin else 0.1
-        ax.set_xlim(xmin, xmax + pad)
+        if xmin < 0:
+            ax.axvline(0, linewidth=1, color="#666666", alpha=0.8)
     # ------------------------------------------------
 
-    if not show_eu or eu_vals is None:
-        # --- Single set ---
+    if not show_eu:
+        # Single series
         ax.barh(labels, country_vals)
     else:
-        # --- Grouped bars: Country + EU ---
+        # Grouped bars: Country (top) + EU (below)
         y = np.arange(len(labels))
 
         group_height = 0.8
@@ -163,12 +165,11 @@ def plot_contribution_bar_chart(
         y_country = y - (bar_h / 2 + gap / 2)
         y_eu = y + (bar_h / 2 + gap / 2)
 
-        ax.barh(y_country, country_vals, height=bar_h, label=geo_area)
-        ax.barh(y_eu, eu_vals, height=bar_h, label="EU average", color="#888888")
+        ax.barh(y_country, country_vals, height=bar_h, label=geo_area, color=COUNTRY_COLOR)
+        ax.barh(y_eu, eu_vals, height=bar_h, label="EU average", color=EU_COLOR)
 
         ax.set_yticks(y)
         ax.set_yticklabels(labels)
-
         ax.legend(loc="lower right", frameon=False)
 
     ax.set_xlabel(
@@ -183,8 +184,8 @@ def plot_contribution_bar_chart(
         labelpad=12,
     )
 
-    ax.tick_params(axis="y", labelsize=Y_TICK_SIZE)
-    ax.tick_params(axis="x", labelsize=X_TICK_SIZE)
+    ax.tick_params(axis="x", labelsize=TICK_SIZE)
+    ax.tick_params(axis="y", labelsize=TICK_SIZE)
 
     ax.invert_yaxis()
 
@@ -206,89 +207,7 @@ def plot_contribution_bar_chart(
     fig.tight_layout()
 
     buf = BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", transparent=True)
+    fig.savefig(buf, format="png", transparent=True)
     plt.close(fig)
     buf.seek(0)
     return buf
-
-
-
-
-# def plot_contribution_bar_chart(
-#     df: pd.DataFrame,
-#     geo_area: str,
-#     year: int | str,
-#     show_eu: bool = False,
-# ) -> BytesIO:
-#     labels, country_values, eu_values, year_str = _compute_region_factors(df, geo_area, year)
-#
-#     fig, ax = plt.subplots(figsize=(BASE_WIDTH, BASE_HEIGHT))
-#
-#     if not show_eu:
-#         # --- Current behaviour ---
-#         ax.barh(labels, country_values)
-#
-#     else:
-#         # --- Grouped bars: Country (top) + EU (beneath) ---
-#         y = np.arange(len(labels))
-#
-#         group_height = 0.8          # total vertical space per factor row
-#         bar_h = group_height / 2.2  # thinner bars to fit two
-#         gap = bar_h * 0.25          # small gap between them
-#
-#         # Country above, EU beneath
-#         y_country = y - (bar_h / 2 + gap / 2)
-#         y_eu = y + (bar_h / 2 + gap / 2)
-#
-#         ax.barh(y_country, country_values, height=bar_h, label=geo_area)
-#         ax.barh(y_eu, eu_values, height=bar_h, label="EU average", color="#888888")
-#
-#         # Center tick labels between the paired bars
-#         ax.set_yticks(y)
-#         ax.set_yticklabels(labels)
-#
-#         ax.legend(loc="lower right", frameon=False)
-#
-#     ax.set_xlabel(
-#         "Contribution to happiness score",
-#         fontsize=AXIS_LABEL_SIZE,
-#         labelpad=X_LABEL_PADDING,
-#     )
-#
-#     ax.set_ylabel(
-#         "Contributing factors",
-#         fontsize=AXIS_LABEL_SIZE,
-#         labelpad=12,
-#     )
-#
-#     ax.tick_params(axis="y", labelsize=Y_TICK_SIZE)
-#     ax.tick_params(axis="x", labelsize=X_TICK_SIZE)
-#
-#     ax.invert_yaxis()
-#
-#     # Grid lines aligned with x ticks
-#     ax.set_axisbelow(True)
-#     ax.grid(
-#         axis="x",
-#         which="major",
-#         linestyle="-",
-#         linewidth=1,
-#         alpha=1,
-#         color="#666666",
-#     )
-#
-#     # Lighten the bar container (axes spines)
-#     for spine in ax.spines.values():
-#         spine.set_color("#cccccc")
-#         spine.set_linewidth(0.8)
-#
-#     # Remove the outer figure box
-#     fig.patch.set_visible(False)
-#
-#     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.95))
-#
-#     buf = BytesIO()
-#     fig.savefig(buf, format="png", transparent=True)
-#     plt.close(fig)
-#     buf.seek(0)
-#     return buf

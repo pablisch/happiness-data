@@ -4,29 +4,18 @@ from io import BytesIO
 import matplotlib.pyplot as plt
 import pandas as pd
 
-BASE_WIDTH = 12
-BASE_HEIGHT = 6
-
-# -----------------------------
-# Typography control
-# -----------------------------
-FONT_SCALE = 1.5
-
-TITLE_SIZE = 16 * FONT_SCALE
-AXIS_LABEL_SIZE = 13 * FONT_SCALE
-TICK_SIZE = 12 * FONT_SCALE
-
-X_LABEL_PADDING = 12 * FONT_SCALE
-# -----------------------------
-
-# -----------------------------
-# Scale values
-# -----------------------------
-FIXED_MIN = 5
-FIXED_MAX = 8
-VARIABLE_MIN = 6.5
-VARIABLE_MAX = 6.7
-# -----------------------------
+from charts.chart_style import (
+    AXIS_LABEL_SIZE,
+    TICK_SIZE,
+    X_LABEL_PADDING,
+    BASE_WIDTH,
+    BASE_HEIGHT_GRAPH,
+    FIXED_GRAPH_MIN,
+    FIXED_GRAPH_MAX,
+    EU_TOTAL_MIN,
+    EU_TOTAL_MAX,
+    EU_COLOR,
+)
 
 
 def build_timeline_title(geo_area: str, show_eu: bool = False, fixed_scale: bool = False) -> str:
@@ -85,14 +74,28 @@ def plot_time_line_graph(
 ) -> BytesIO:
     years, c_vals, eu_vals = _compute_series(df, geo_area)
 
-    fig, ax = plt.subplots(figsize=(BASE_WIDTH, BASE_HEIGHT))
+    fig, ax = plt.subplots(figsize=(BASE_WIDTH, BASE_HEIGHT_GRAPH))
 
-    # --- Plot country line ---
-    ax.plot(years, c_vals, marker="o", label=geo_area)
+    # --- Plot country line (always) ---
+    ax.plot(
+        years,
+        c_vals,
+        marker="o",
+        linewidth=2,
+        label=geo_area,
+    )
 
-    # --- Optional EU line ---
+    # --- Optional EU line (only if show_eu) ---
     if show_eu:
-        ax.plot(years, eu_vals, marker="o", linestyle="--", label="EU average")
+        ax.plot(
+            years,
+            eu_vals,
+            marker="o",
+            linestyle="--",
+            linewidth=2,
+            color=EU_COLOR,          # matches EU bars
+            label="EU average",
+        )
 
     ax.set_xlabel("Year", fontsize=AXIS_LABEL_SIZE, labelpad=X_LABEL_PADDING)
     ax.set_ylabel("Happiness (ladder) score", fontsize=AXIS_LABEL_SIZE)
@@ -104,35 +107,37 @@ def plot_time_line_graph(
 
     # ------------------------------------------------
     # Y-axis behaviour toggle (stable ranges)
-    #
-    # fixed_scale == True  -> fixed EU-wide scale 5 to 8
-    # fixed_scale == False -> "zoomed" scale that is stable even if showEU toggles
-    #                        (computed using BOTH country+EU values regardless)
     # ------------------------------------------------
-
-    # Always include EU values in the LIMIT calculation so toggling showEU
-    # doesn't change the axis scale.
-    limit_vals = c_vals + eu_vals
+    limit_vals = list(c_vals) + list(eu_vals)
 
     if fixed_scale:
-        # Fixed EU-wide scale (trial)
-        ax.set_ylim(FIXED_MIN, FIXED_MAX)
+        ax.set_ylim(FIXED_GRAPH_MIN, FIXED_GRAPH_MAX)
     else:
-        # Data-driven but stable (won't change when showEU is toggled)
-        ymin = min(limit_vals) if limit_vals else VARIABLE_MIN
-        ymax = max(limit_vals) if limit_vals else VARIABLE_MAX
+        ymin = min(limit_vals) if limit_vals else EU_TOTAL_MIN
+        ymax = max(limit_vals) if limit_vals else EU_TOTAL_MAX
 
-        # Enforce your "guard rails":
-        # - cap the minimum at 6.4 (i.e. don't let the lower bound go above 6.4)
-        # - floor the maximum at 6.8 (i.e. don't let the upper bound go below 6.8)
-        ymin = min(ymin, VARIABLE_MIN)
-        ymax = max(ymax, VARIABLE_MAX)
+        ymin = min(ymin, EU_TOTAL_MIN)
+        ymax = max(ymax, EU_TOTAL_MAX)
 
-        # Small padding for aesthetics (won't change with toggling)
         pad = (ymax - ymin) * 0.06
         ax.set_ylim(ymin - pad, ymax + pad)
 
     # ------------------------------------------------
+    # Legend / key
+    #
+    # IMPORTANT:
+    # - Positioned under the plot (right of y-ticks)
+    # - Removed from layout calculations so chart size
+    #   does NOT change when show_eu toggles
+    # ------------------------------------------------
+    leg = ax.legend(
+        loc="upper left",
+        bbox_to_anchor=(0.08, -0.02),
+        frameon=False,
+        fontsize=TICK_SIZE,
+    )
+    # Critical: prevent tight_layout from resizing axes
+    leg.set_in_layout(False)
 
 
     for spine in ax.spines.values():
@@ -140,7 +145,9 @@ def plot_time_line_graph(
         spine.set_linewidth(0.8)
 
     fig.patch.set_visible(False)
-    fig.tight_layout()
+
+    # Reserve a fixed bottom margin ALWAYS so layout is stable
+    fig.tight_layout(rect=[0, 0.14, 1, 1])
 
     buf = BytesIO()
     fig.savefig(buf, format="png", transparent=True)

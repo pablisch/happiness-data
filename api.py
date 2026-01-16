@@ -12,7 +12,9 @@ import math
 from urllib.parse import unquote  # ✅ NEW: decode geo_area safely
 
 from helpers.pickle_helpers import load_pickle
-from contribution_bar_chart import plot_contribution_bar_chart, build_contribution_bar_title
+from charts.contribution_bar_chart import plot_contribution_bar_chart, build_contribution_bar_title
+from charts.time_line_graph import plot_time_line_graph, build_timeline_title
+
 
 app = FastAPI()
 
@@ -62,8 +64,9 @@ def contrib_bar(
     geo_area: str,
     year: int,
     show_eu: bool = Query(False),
+    fixed_scale: bool = Query(False),
 ):
-    # ✅ NEW: make sure geo_area is decoded (e.g. "Czech%20Republic" -> "Czech Republic")
+    # Decode (e.g. "Czech%20Republic" -> "Czech Republic")
     geo_area = unquote(geo_area)
 
     try:
@@ -72,6 +75,7 @@ def contrib_bar(
             geo_area=geo_area,
             year=year,
             show_eu=show_eu,
+            fixed_scale=fixed_scale,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -82,15 +86,60 @@ def contrib_bar(
         headers={"Cache-Control": "no-store"},
     )
 
+
 @app.get("/contrib_bar_meta/{geo_area}/{year}")
 def contrib_bar_meta(
     geo_area: str,
     year: int,
     show_eu: bool = Query(False),
+    fixed_scale: bool = Query(False),
 ):
+    # Decode here too so title matches the chart selection
+    geo_area = unquote(geo_area)
+
     return {
         "title": build_contribution_bar_title(geo_area, year, show_eu),
         "geo_area": geo_area,
         "year": year,
         "show_eu": show_eu,
+        "fixed_scale": fixed_scale,
     }
+
+
+
+@app.get("/timeline_meta/{geo_area}")
+def timeline_meta(
+    geo_area: str,
+    show_eu: bool = Query(False),
+    fixed_scale: bool = Query(False),
+):
+    try:
+        title = build_timeline_title(geo_area=geo_area, show_eu=show_eu, fixed_scale=fixed_scale)
+        return {"title": title}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/timeline/{geo_area}")
+def timeline(
+    geo_area: str,
+    show_eu: bool = Query(False),
+    fixed_scale: bool = Query(False),
+):
+    # print_eu_ladder_score_range(app.state.wh.copy())
+    try:
+        buf = plot_time_line_graph(
+            app.state.wh,
+            geo_area=geo_area,
+            show_eu=show_eu,
+            fixed_scale=fixed_scale,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return StreamingResponse(
+        buf,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store"},
+    )
+
