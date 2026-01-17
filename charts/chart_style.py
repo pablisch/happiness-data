@@ -55,4 +55,10 @@ COUNTRY_COLOR = "#1f77b4"  # default matplotlib blue
 EU_COLOR = "#ff7f0e"       # EU reference (bars + line)
 # -----------------------------
 
+# -----------------------------
+# Score card delta colour scale (country - EU average)
+# -----------------------------
+EU_DELTA_MIN = -0.32  # paste from script (rounded)
+EU_DELTA_MAX =  0.26  # paste from script (rounded)
+# -----------------------------
 

@@ -1,5 +1,3 @@
-# time_line_graph.py
-
 from io import BytesIO
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -17,7 +15,6 @@ from charts.chart_style import (
     EU_COLOR,
 )
 
-
 def build_timeline_title(geo_area: str, show_eu: bool = False, fixed_scale: bool = False) -> str:
     title = f"Happiness (ladder) score over time (2021–2023)\n{geo_area}"
     if show_eu:
@@ -25,9 +22,7 @@ def build_timeline_title(geo_area: str, show_eu: bool = False, fixed_scale: bool
     return title
 
 
-
 def _compute_series(df: pd.DataFrame, geo_area: str):
-    # Expect these columns exist in your combined dataframe
     required = ["ladder_score_21", "ladder_score_22", "ladder_score_23"]
     missing = [c for c in required if c not in df.columns]
     if missing:
@@ -35,7 +30,6 @@ def _compute_series(df: pd.DataFrame, geo_area: str):
 
     years = [2021, 2022, 2023]
 
-    # EU average (based on population_EU_only marker like you used before)
     if "population_EU_only" not in df.columns:
         raise ValueError("EU selection requires 'population_EU_only' column")
 
@@ -49,7 +43,6 @@ def _compute_series(df: pd.DataFrame, geo_area: str):
         float(eu_df["ladder_score_23"].mean()),
     ]
 
-    # Country series
     if "country" not in df.columns:
         raise ValueError("Country selection requires 'country' column")
 
@@ -66,17 +59,42 @@ def _compute_series(df: pd.DataFrame, geo_area: str):
     return years, c_vals, eu_vals
 
 
+def _scaled_font(base: float, width_px: int | None, height_px: int | None) -> float:
+    if not width_px or not height_px:
+        return float(base)
+
+    ref_w, ref_h = 560, 240
+    scale = min(width_px / ref_w, height_px / ref_h)
+    scale = max(0.55, min(1.0, scale))
+    return float(base) * scale
+
+
 def plot_time_line_graph(
     df: pd.DataFrame,
     geo_area: str,
     show_eu: bool = False,
     fixed_scale: bool = False,
+    # NEW: size from frontend
+    width_px: int | None = None,
+    height_px: int | None = None,
 ) -> BytesIO:
     years, c_vals, eu_vals = _compute_series(df, geo_area)
 
-    fig, ax = plt.subplots(figsize=(BASE_WIDTH, BASE_HEIGHT_GRAPH))
+    dpi = 140
+    if width_px and height_px:
+        fig_w = max(3.2, width_px / dpi)
+        fig_h = max(1.8, height_px / dpi)
+        figsize = (fig_w, fig_h)
+    else:
+        figsize = (BASE_WIDTH, BASE_HEIGHT_GRAPH)
 
-    # --- Plot country line (always) ---
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+
+    axis_label_size = _scaled_font(AXIS_LABEL_SIZE, width_px, height_px)
+    tick_size = _scaled_font(TICK_SIZE, width_px, height_px)
+    xlabel_pad = max(3, int(_scaled_font(X_LABEL_PADDING, width_px, height_px)))
+
+    # Plot country line
     ax.plot(
         years,
         c_vals,
@@ -85,7 +103,7 @@ def plot_time_line_graph(
         label=geo_area,
     )
 
-    # --- Optional EU line (only if show_eu) ---
+    # Optional EU line
     if show_eu:
         ax.plot(
             years,
@@ -93,22 +111,20 @@ def plot_time_line_graph(
             marker="o",
             linestyle="--",
             linewidth=2,
-            color=EU_COLOR,          # matches EU bars
+            color=EU_COLOR,
             label="EU average",
         )
 
-    ax.set_xlabel("Year", fontsize=AXIS_LABEL_SIZE, labelpad=X_LABEL_PADDING)
-    ax.set_ylabel("Happiness (ladder) score", fontsize=AXIS_LABEL_SIZE)
+    ax.set_xlabel("Year", fontsize=axis_label_size, labelpad=xlabel_pad)
+    ax.set_ylabel("Happiness (ladder) score", fontsize=axis_label_size)
 
-    ax.tick_params(axis="both", labelsize=TICK_SIZE)
+    ax.tick_params(axis="both", labelsize=tick_size)
     ax.set_xticks(years)
 
     ax.grid(axis="y", linestyle="-", linewidth=1, alpha=1, color="#666666")
 
-    # ------------------------------------------------
-    # Y-axis behaviour toggle (stable ranges)
-    # ------------------------------------------------
-    limit_vals = list(c_vals) + list(eu_vals)
+    # Y-axis behaviour toggle (your existing logic)
+    limit_vals = list(c_vals) + (list(eu_vals) if show_eu else [])
 
     if fixed_scale:
         ax.set_ylim(FIXED_GRAPH_MIN, FIXED_GRAPH_MAX)
@@ -122,23 +138,14 @@ def plot_time_line_graph(
         pad = (ymax - ymin) * 0.06
         ax.set_ylim(ymin - pad, ymax + pad)
 
-    # ------------------------------------------------
-    # Legend / key
-    #
-    # IMPORTANT:
-    # - Positioned under the plot (right of y-ticks)
-    # - Removed from layout calculations so chart size
-    #   does NOT change when show_eu toggles
-    # ------------------------------------------------
+    # Legend under plot, but keep it from resizing axes
     leg = ax.legend(
         loc="upper left",
-        bbox_to_anchor=(0.08, -0.02),
+        bbox_to_anchor=(0.06, -0.02),
         frameon=False,
-        fontsize=TICK_SIZE,
+        fontsize=tick_size,
     )
-    # Critical: prevent tight_layout from resizing axes
     leg.set_in_layout(False)
-
 
     for spine in ax.spines.values():
         spine.set_color("#cccccc")
@@ -146,13 +153,11 @@ def plot_time_line_graph(
 
     fig.patch.set_visible(False)
 
-    # Reserve a fixed bottom margin ALWAYS so layout is stable
-    fig.tight_layout(rect=[0, 0.14, 1, 1])
+    # Reserve bottom margin always so legend doesn't break layout
+    fig.tight_layout(rect=[0, 0.14, 1, 1], pad=0.6)
 
     buf = BytesIO()
     fig.savefig(buf, format="png", transparent=True)
     plt.close(fig)
     buf.seek(0)
-
     return buf
-
