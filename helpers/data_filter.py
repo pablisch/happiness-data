@@ -1,26 +1,32 @@
 import pandas as pd
 
 def filter_to_eu_only(df):
-    # EU aggregate rows (used for EU averages)
-    eu_agg_df = df[df["population_EU_only"].notna()].copy()
-    if eu_agg_df.empty:
-        raise ValueError("No EU aggregate rows found (population_EU_only is empty)")
+    """
+    Return exactly ONE row per EU member state.
+    EU membership is inferred from presence of population_EU_only.
+    No duplication. No synthetic aggregate rows.
+    """
 
-    # Countries contributing to EU aggregates (EU membership)
+    # EU member states are those with EU-only population present
     eu_countries = (
-        eu_agg_df["country"]
+        df.loc[df["population_EU_only"].notna(), "country"]
         .dropna()
         .astype(str)
         .str.strip()
         .unique()
     )
 
-    # EU country rows (selectable countries)
+    # Keep only valid country rows
     country_df = df[df["country"].notna()].copy()
     country_df["country"] = country_df["country"].astype(str).str.strip()
-    eu_country_df = country_df[country_df["country"].isin(eu_countries)]
 
-    # Keep both EU country rows + EU aggregate rows
-    filtered = pd.concat([eu_country_df, eu_agg_df], ignore_index=True)
+    eu_country_df = country_df[country_df["country"].isin(eu_countries)].copy()
 
-    return filtered
+    # CRITICAL: ensure one row per country
+    eu_country_df = (
+        eu_country_df
+        .drop_duplicates(subset=["country"], keep="first")
+        .reset_index(drop=True)
+    )
+
+    return eu_country_df

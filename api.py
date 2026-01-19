@@ -11,6 +11,9 @@ import numpy as np
 import math
 from urllib.parse import unquote
 
+from fastapi.responses import JSONResponse
+import pandas as pd
+
 from helpers.pickle_helpers import load_pickle
 from helpers.data_filter import filter_to_eu_only
 from charts.contribution_bar_chart import plot_contribution_bar_chart, build_contribution_bar_title
@@ -152,3 +155,56 @@ def donut_data(
 @app.get("/map_data")
 def map_data():
     return app.state.map_payload
+
+
+@app.get("/debug/factor_values/{country}/{factor}/{year}")
+def debug_factor_values(country: str, factor: str, year: int):
+    df = app.state.wh.copy()
+
+    year_str = str(year)
+    if len(year_str) == 4:
+        year_str = year_str[-2:]
+
+    value_col = f"ladder_score_{year_str}" if factor == "combined_score" else f"{factor}_{year_str}"
+
+    if value_col not in df.columns:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Missing column {value_col}", "available_columns_sample": list(df.columns)[:40]},
+        )
+
+    df = df[df["country"].notna()].copy()
+    df["country"] = df["country"].astype(str).str.strip()
+
+    c = country.strip()
+    rows = df[df["country"] == c].copy()
+
+    if rows.empty:
+        # helpful: show close matches
+        matches = df["country"].dropna().unique().tolist()
+        maybe = [m for m in matches if c.lower() in m.lower()][:20]
+        return {"error": f"No rows for country={c}", "maybe": maybe}
+
+    raw = rows[value_col]
+
+    # show values including NaN
+    raw_list = []
+    for v in raw.tolist():
+        if isinstance(v, float) and np.isnan(v):
+            raw_list.append(None)
+        else:
+            raw_list.append(v)
+
+    numeric = pd.to_numeric(raw, errors="coerce")
+    mean = float(np.nanmean(numeric.values)) if np.isfinite(numeric.values).any() else None
+
+    return {
+        "country": c,
+        "factor": factor,
+        "year": year,
+        "value_col": value_col,
+        "row_count_for_country": int(len(rows)),
+        "raw_values": raw_list,
+        "mean_used_by_donut": mean,
+        "unique_values": sorted({v for v in raw_list if v is not None})[:50],
+    }

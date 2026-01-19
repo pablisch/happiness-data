@@ -69,7 +69,7 @@ def build_contribution_bar_title(geo_area: str, year: int | str, show_eu: bool =
         year_str = year_str[-2:]
     year = f"20{year_str}"
 
-    title = f"Average factor contributions to happiness (ladder) score\nfor {geo_area} in {year}"
+    title = f"Happiness contributory factor scores for\n{geo_area} in {year}"
     if show_eu:
         title += " (alongside EU average)"
     return title
